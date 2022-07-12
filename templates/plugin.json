@@ -1,0 +1,10 @@
+{
+  "id": "hide-api-users",
+  "name": "Hide API users",
+  "description": "Hide API users in the roster list.",
+  "version": "",
+  "srcURL": "index.js",
+  "allowUnload": true,
+  "platforms": ["web", "electron", "ios", "android"],
+  "participantRoles": ["chair", "guest"]
+}

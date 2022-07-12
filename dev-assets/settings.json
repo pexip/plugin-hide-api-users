@@ -1,0 +1,9 @@
+{
+  "plugins": [
+    {
+      "id": "hide-api-users",
+      "srcURL": "plugins/hide-api-users/plugin.json",
+      "enabled": true
+    }
+  ]
+}
