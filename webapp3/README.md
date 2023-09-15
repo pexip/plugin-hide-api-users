@@ -1,10 +1,8 @@
-# Interpretation plugin Web App 3
+# Plugin Hide API Users
 
-This plugin replicates the behavior of the [Web App 2 plugin](https://github.com/pexip/plugin-interpretation) for interpretation, but it uses the new Web App 3 plugin system and the React components.
+This plugin hide the API participants from the Roster list. In the two folders you will find two versions depending on the Web App version that you are using.
 
 This plugin should be deployed in the **same domain** as Web App 3 and for this reason we have some additional steps to test it in a local environment.
-
-In the plugin we have two roles that have to be deployed in two different brandings:
 
 ## Run for development
 
