@@ -48,14 +48,12 @@ const subscribeMeetingWrapperChanges = () => {
 
 const subscribeHeaderChanges = () => {
   const observer = new MutationObserver(() => {
-    console.log('header')
     observerParticipantButton?.disconnect()
     setTimeout(() => {
       observerParticipantButton = subscribeButtonParticipantsChanges()
     }, 0)
   })
   const header = parent.document.querySelector('[data-testid="header-core-enhancers"] > div')
-  console.log(header)
   if (header != null) {
     observer.observe(header, {childList: true})
   }
@@ -65,7 +63,6 @@ const subscribeHeaderChanges = () => {
 const subscribeButtonParticipantsChanges = () => {
   const observer = new MutationObserver(changeNumberParticipants)
   const buttonParticipants = parent.document.querySelector('[data-testid="button-participants"] > div')
-  console.log(buttonParticipants)
   if (buttonParticipants != null) {
     observer.observe(buttonParticipants, {childList: true})
   }
@@ -73,11 +70,12 @@ const subscribeButtonParticipantsChanges = () => {
 }
 
 /**
- * Remove the API participants from the roster list and the number
+ * Remove the API participants from the roster list and change the number of
+ * participants in the roster list.
  */
 const removeApiUsersFromRosterList = () => {
   console.log('Removing API participants from Roster List')
-  const participantsElements = parent.document.querySelectorAll('[data-testid="participant-row"]')
+  const participantsElements = parent.document.querySelectorAll('[data-testid="participant-panel-in-meeting"] [data-testid="participant-row"]')
   if (participantsElements.length != 0) {
     let numberParticipants = 0
     participantsElements.forEach((element) => {
@@ -94,9 +92,20 @@ const removeApiUsersFromRosterList = () => {
         }
       }
     })
-    const counter = parent.document.querySelector('[data-testid="participant-panel-in-meeting"] > button > div > span')
+    const counter = parent.document.querySelector('[data-testid="participant-panel-in-meeting"] > button > div > span') as HTMLDivElement
     if (counter != null) {
-      counter.innerHTML = numberParticipants.toString()
+      const headerInThisMeeting = parent.document.querySelector('[data-testid="participant-panel-in-meeting"]') as HTMLDivElement
+      if (numberParticipants === 0) {
+        if (headerInThisMeeting) {
+          headerInThisMeeting.style.display = 'none'
+        }
+        counter.innerHTML = numberParticipants.toString()
+      } else {
+        if (headerInThisMeeting) {
+          headerInThisMeeting.style.display = 'block'
+        }
+        counter.innerHTML = numberParticipants.toString()
+      }
     }
   }
 }
