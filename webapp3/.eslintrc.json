@@ -1,0 +1,32 @@
+{
+    "env": {
+        "browser": true,
+        "es2021": true
+    },
+    "extends": [
+        "standard-with-typescript",
+        "plugin:react/recommended"
+    ],
+    "overrides": [{
+        "files": [
+            "./src/**/*.ts",
+            "./src/**/*.tsx"
+        ]
+    }],
+    "parserOptions": {
+        "ecmaVersion": "latest",
+        "sourceType": "module",
+        "project": ["./tsconfig.json"]
+    },
+    "plugins": [
+        "react"
+    ],
+    "rules": {
+    },
+    "ignorePatterns": ["dist"],
+    "settings": {
+        "react": {
+          "version": "detect"
+        }
+    }
+}
