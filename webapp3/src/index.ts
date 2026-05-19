@@ -115,8 +115,8 @@ const updateApiUsersStyle = (): void => {
 }
 
 /**
- * Change the number of participants shown in the button. API participants are not counted.
- * If the number of participants is 1, the text "participant" is shown instead of "participants".
+ * Change the number of participants shown in the UI. API participants are not counted.
+ * This updates only the numeric portion of the button badge, panel header, and accordion title.
  */
 const changeNumberParticipants = (): void => {
   const noApiParticipants = participants.filter((participant) => {
