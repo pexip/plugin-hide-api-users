@@ -1,10 +1,7 @@
 {
   "editor.tabSize": 2,
-  "xml.preferences.quoteStyle": "single",
-  "javascript.format.semicolons": "remove",
-  "typescript.format.semicolons": "remove",
-  "typescript.preferences.quoteStyle": "single",
-  "javascript.preferences.quoteStyle": "single",
+  "js/ts.format.semicolons": "remove",
+  "js/ts.preferences.quoteStyle": "single",
   "editor.rulers": [80,120],
   "eslint.workingDirectories": ["webapp2", "webapp3"]
 }
