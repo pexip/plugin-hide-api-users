@@ -1,134 +1,157 @@
-import { CallType } from '@pexip/infinity'
-import { Participant, registerPlugin } from '@pexip/plugin-api'
+import {
+  CallType,
+  type InfinityParticipant,
+  ParticipantActivities,
+  registerPlugin
+} from '@pexip/plugin-api'
 
-let participants: Participant[] = []
-let observerRosterList: MutationObserver
-let observerHeader: MutationObserver
-let observerParticipantButton: MutationObserver
+let participants: InfinityParticipant[] = []
+let observerRosterList: MutationObserver | null = null
 
-// Hide all chat-activity message by CSS
-const style = document.createElement('style')
-style.innerHTML = '[data-testid="chat-activity-message"] { display: none}'
-parent.document.getElementsByTagName('body')[0].appendChild(style)
+// Hide all chat-activity messages by CSS
+const styleChatActivity = document.createElement('style')
+styleChatActivity.innerHTML =
+  '[data-testid="chat-activity-message"] { display: none}'
 
+// Hide all participant rows by default. Only rows marked as verified non-API will be shown.
+const styleApiUsers = document.createElement('style')
+styleApiUsers.innerHTML = [
+  '[data-testid="participant-panel-in-meeting"] [data-testid="participant-row"] { display: none !important; }',
+  '[data-testid="participant-panel-in-meeting"] [data-testid="participant-row"][data-visible="true"] { display: flex !important; }'
+].join('\n')
+
+const [body] = parent.document.getElementsByTagName('body')
+body.appendChild(styleChatActivity)
+body.appendChild(styleApiUsers)
+
+const version = 0
 const plugin = await registerPlugin({
   id: 'hide-api-users',
-  version: 0
+  version
 })
 
-plugin.events.participants.add((users) => {
-  participants = getCleanParticipants(users)
-  removeApiUsersFromRosterList()
+const timeout = 1000
+
+plugin.events.participantsActivities.add((activities) => {
+  activities.forEach((change) => {
+    const { roomId, activity } = change
+    if (roomId === 'main') {
+      const { type, participant } = activity
+      switch (type) {
+        case ParticipantActivities.Join:
+          participants.push(participant)
+          break
+        case ParticipantActivities.Leave:
+          participants = participants.filter((p) => p.uuid !== participant.uuid)
+          break
+        case ParticipantActivities.Update:
+          participants = participants.map((p) =>
+            p.uuid === participant.uuid ? participant : p
+          )
+          break
+      }
+    }
+  })
+  updateApiUsersStyle()
   changeNumberParticipants()
 })
 
 plugin.events.authenticatedWithConference.add(() => {
   participants = []
   observerRosterList?.disconnect()
-  observerHeader?.disconnect()
-  observerParticipantButton?.disconnect()
   setTimeout(() => {
     observerRosterList = subscribeMeetingWrapperChanges()
-    observerHeader = subscribeHeaderChanges()
-    observerParticipantButton = subscribeButtonParticipantsChanges()
-  }, 1000)
+  }, timeout)
 })
 
 /**
  * Observe when the container in which is the roster list change
  */
-const subscribeMeetingWrapperChanges = () => {
-  const observer = new MutationObserver(removeApiUsersFromRosterList)
-  const meetingWrapper = parent.document.querySelector('[data-testid="meeting-wrapper"]')
-  if (meetingWrapper != null) {
-    observer.observe(meetingWrapper, {childList: true})
+const subscribeMeetingWrapperChanges = (): MutationObserver => {
+  const meetingWrapper = parent.document.querySelector(
+    '[data-testid="meeting-wrapper"]'
+  )
+  const observeOptions: MutationObserverInit = {
+    childList: true,
+    subtree: true
+  }
+  const callback = (): void => {
+    // Disconnect before modifying the DOM to avoid infinite loop
+    observer.disconnect()
+    updateApiUsersStyle()
+    changeNumberParticipants()
+    if (meetingWrapper !== null) {
+      observer.observe(meetingWrapper, observeOptions)
+    }
+  }
+  const observer = new MutationObserver(callback)
+  if (meetingWrapper !== null) {
+    observer.observe(meetingWrapper, observeOptions)
   }
   return observer
 }
 
-const subscribeHeaderChanges = () => {
-  const observer = new MutationObserver(() => {
-    observerParticipantButton?.disconnect()
-    setTimeout(() => {
-      observerParticipantButton = subscribeButtonParticipantsChanges()
-    }, 0)
+/**
+ * Mark non-API participant rows as visible.
+ * All rows are hidden by default via CSS. Only verified non-API rows get shown.
+ * If a participant is not yet known (not in the array), it stays hidden.
+ */
+const updateApiUsersStyle = (): void => {
+  const participantsElements = parent.document.querySelectorAll(
+    '[data-testid="participant-panel-in-meeting"] [data-testid="participant-row"]'
+  )
+  participantsElements.forEach((element) => {
+    const [span] = element.getElementsByTagName('span')
+    const displayName = span.getAttribute('title')
+    const participant = participants.find((p) => p.displayName === displayName)
+    const isConfirmedNonApi =
+      participant !== undefined && participant.callType !== CallType.api
+    if (isConfirmedNonApi) {
+      element.setAttribute('data-visible', 'true')
+    } else {
+      element.removeAttribute('data-visible')
+    }
   })
-  const header = parent.document.querySelector('[data-testid="header-core-enhancers"] > div')
-  if (header != null) {
-    observer.observe(header, {childList: true})
-  }
-  return observer
-}
-
-const subscribeButtonParticipantsChanges = () => {
-  const observer = new MutationObserver(changeNumberParticipants)
-  const buttonParticipants = parent.document.querySelector('[data-testid="button-participants"] > div')
-  if (buttonParticipants != null) {
-    observer.observe(buttonParticipants, {childList: true})
-  }
-  return observer
 }
 
 /**
- * Remove the API participants from the roster list and change the number of
- * participants in the roster list.
+ * Change the number of participants shown in the button. API participants are not counted.
+ * If the number of participants is 1, the text "participant" is shown instead of "participants".
  */
-const removeApiUsersFromRosterList = () => {
-  console.log('Removing API participants from Roster List')
-  const participantsElements = parent.document.querySelectorAll('[data-testid="participant-panel-in-meeting"] [data-testid="participant-row"]')
-  if (participantsElements.length != 0) {
-    let numberParticipants = 0
-    participantsElements.forEach((element) => {
-      const span = element.getElementsByTagName('span')[0]
-      const displayName = span.getAttribute('title')
-      const found = participants.some((participant) => participant.callType === CallType.api && participant.displayName === displayName)
-      const parent = element.parentElement
-      if (parent != null) {
-        if (found) {
-          parent.style.display = 'none'
-        } else {
-          parent.style.display = 'block'
-          numberParticipants++
-        }
-      }
-    })
-    const counter = parent.document.querySelector('[data-testid="participant-panel-in-meeting"] > button > div > span') as HTMLDivElement
-    if (counter != null) {
-      const headerInThisMeeting = parent.document.querySelector('[data-testid="participant-panel-in-meeting"]') as HTMLDivElement
-      if (numberParticipants === 0) {
-        if (headerInThisMeeting) {
-          headerInThisMeeting.style.display = 'none'
-        }
-        counter.innerHTML = numberParticipants.toString()
-      } else {
-        if (headerInThisMeeting) {
-          headerInThisMeeting.style.display = 'block'
-        }
-        counter.innerHTML = numberParticipants.toString()
-      }
-    }
-  }
-}
+const changeNumberParticipants = (): void => {
+  const noApiParticipants = participants.filter((participant) => {
+    const { callType } = participant
+    return callType !== CallType.api
+  })
+  const { length: numberParticipants } = noApiParticipants
 
-const changeNumberParticipants = () => {
-  console.log('Changing participant number')
-  const numberParticipants = participants.filter((participant) => participant.callType != CallType.api ).length
-  const container = parent.document.querySelector('[data-testid="button-participants"] > div > div')
-  if (container != null) {
-    container.innerHTML = container.innerHTML.replace(/\d+ (.*)/, `${numberParticipants} $1`)
-    if (numberParticipants === 1) {
-      container.innerHTML = container.innerHTML.replace(/(.*)s$/, '$1')
-    }
+  // Change it into the badge of the button participants
+  const badgeCounter = parent.document.querySelector(
+    '[data-testid="badge-counter-number"] > span'
+  )
+  if (badgeCounter !== null) {
+    badgeCounter.textContent = numberParticipants.toString()
   }
-}
 
-/**
- * Normalize the user to support v32 and v33
- */
-const getCleanParticipants = (participants: any): Participant[] => {
-  if (participants.id == null) {
-    return participants
-  } else {
-    return (participants.participants as Participant[])
+  // Change it into the header of the participant panel
+  const headerTitle = parent.document.querySelector(
+    '[data-testid="panel-header-title"]'
+  )
+  if (headerTitle !== null) {
+    headerTitle.textContent = headerTitle.textContent.replace(
+      /\d+/v,
+      numberParticipants.toString()
+    )
+  }
+
+  // Change it into the accordion title
+  const accordionTitle = parent.document.querySelector(
+    '[data-testid="participant-panel-in-meeting"] span'
+  )
+  if (accordionTitle !== null) {
+    accordionTitle.textContent = accordionTitle.textContent.replace(
+      /\d+/v,
+      numberParticipants.toString()
+    )
   }
 }
