@@ -1,6 +1,6 @@
 # Plugin Hide API Users
 
-This plugin hide the API participants from the Roster list. In the two folders
+This plugin hides the API participants from the Roster list. In the two folders
 you will find two versions depending on the Web App version that you are using.
 
 This plugin should be deployed in the **same domain** as Web App 3 and for this
