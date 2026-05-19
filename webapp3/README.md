@@ -19,11 +19,16 @@ reason we have some additional steps to test it in a local environment.
 
 ```env
 VITE_INFINITY_TARGET=<infinity_url>
+VITE_INFINITY_PATH=<infinity_path>
 VITE_DEV_SERVER_PORT=<dev_server_port>
 ```
 
 The `VITE_INFINITY_TARGET` variable is **mandatory** and should contain the URL
 of the Pexip Infinity system where you want to test the plugin.
+
+The `VITE_INFINITY_PATH` variable is an optional variable used to specify the
+path where Web App 3 is served on the Pexip Infinity system. If not provided, it
+defaults to `/webapp3`.
 
 The `VITE_DEV_SERVER_PORT` variable is an optional variable used to specify the
 port on which the development server will run. If not provided, it defaults to
