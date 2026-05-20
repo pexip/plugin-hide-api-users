@@ -69,3 +69,17 @@ $ npm run build
 ```
 
 Congrats! Your package is ready and it will be available in the `dist` folder.
+
+## Considerations
+
+- **Dependency on Web App 3 implementation:** This plugin manipulates the DOM of
+  Web App 3 by relying on specific `data-testid` attributes and DOM structure.
+  If the Web App 3 implementation changes, the plugin may stop working as
+  expected.
+
+- **Duplicate display names:** The plugin matches participant rows in the UI by
+  their `displayName`. If two participants share the same display name but have
+  different call types (e.g., one is an API user and the other is not), the
+  plugin cannot distinguish between them. Both rows will be treated according to
+  whichever participant is found first in the internal list, which may result in
+  the API user being shown or the non-API user being hidden.
