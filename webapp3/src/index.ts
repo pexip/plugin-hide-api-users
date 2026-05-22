@@ -123,7 +123,8 @@ const changeNumberParticipants = (): void => {
     const { callType } = participant
     return callType !== CallType.api
   })
-  const { length: numberParticipants } = noApiParticipants
+  const minParticipants = 1
+  const numberParticipants = Math.max(minParticipants, noApiParticipants.length)
 
   // Change it into the badge of the button participants
   const badgeCounter = parent.document.querySelector(
