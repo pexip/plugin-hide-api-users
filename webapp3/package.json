@@ -12,17 +12,18 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@pexip/plugin-api": "22.1.9"
+    "@pexip/plugin-api": "22.1.9",
+    "i18next": "^26.2.0",
+    "pino": "^10.3.1"
   },
   "devDependencies": {
-    "@types/node": "^25.9.0",
-    "@typescript-eslint/eslint-plugin": "^8.59.3",
-    "eslint": "^9.35.0",
+    "@types/node": "^25.9.1",
+    "eslint": "^9.39.2",
     "eslint-config-love": "^154.0.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.3",
     "typescript": "^6.0.3",
-    "vite": "^8.0.13",
+    "vite": "^8.0.14",
     "vite-plugin-mkcert": "^2.0.0"
   },
   "engines": {

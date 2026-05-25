@@ -4,6 +4,8 @@ import {
   ParticipantActivities,
   registerPlugin
 } from '@pexip/plugin-api'
+import { logger } from './logger'
+import { i18next, loadParentTranslations } from './i18n'
 
 const { document: parentDoc } = parent
 const NOT_FOUND_ID = 'webapp3-plugin-hide-api-no-participants-found'
@@ -77,7 +79,10 @@ const refreshUI = (): void => {
       if (notFound === null) {
         notFound = parentDoc.createElement('div')
         notFound.id = NOT_FOUND_ID
-        notFound.textContent = 'Results not found'
+        notFound.textContent = i18next.t(
+          'meeting.participant-search.no-results',
+          'No results found'
+        )
         notFound.style.textAlign = 'center'
         panel.parentElement?.appendChild(notFound)
       }
@@ -147,4 +152,9 @@ plugin.events.authenticatedWithConference.add(() => {
   setTimeout(() => {
     observer = observeMeetingWrapper()
   }, TIMEOUT)
+})
+
+plugin.events.languageSelect.add(async (language) => {
+  loadParentTranslations(language)
+  await i18next.changeLanguage(language).catch(logger.error)
 })
