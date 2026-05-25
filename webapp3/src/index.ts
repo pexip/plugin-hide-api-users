@@ -29,13 +29,13 @@ let participants = new Map<string, InfinityParticipant>()
 let me: InfinityParticipant | null = null
 let observer: MutationObserver | null = null
 
-const nonApiDisplayNames = (): Set<string | undefined> => {
-  const names = new Set<string | undefined>()
-  if (me !== null) {
+const nonApiDisplayNames = (): Set<string> => {
+  const names = new Set<string>()
+  if (me?.displayName !== undefined) {
     names.add(me.displayName)
   }
   for (const p of participants.values()) {
-    if (p.callType !== CallType.api) {
+    if (p.callType !== CallType.api && p.displayName !== undefined) {
       names.add(p.displayName)
     }
   }
