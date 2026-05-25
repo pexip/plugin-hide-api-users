@@ -79,13 +79,13 @@ const refreshUI = (): void => {
       if (notFound === null) {
         notFound = parentDoc.createElement('div')
         notFound.id = NOT_FOUND_ID
-        notFound.textContent = i18next.t(
-          'meeting.participant-search.no-results',
-          'No results found'
-        )
         notFound.style.textAlign = 'center'
         panel.parentElement?.appendChild(notFound)
       }
+      notFound.textContent = i18next.t(
+        'meeting.participant-search.no-results',
+        'No results found'
+      )
       panel.style.display = 'none'
     }
   }
@@ -155,6 +155,6 @@ plugin.events.authenticatedWithConference.add(() => {
 })
 
 plugin.events.languageSelect.add(async (language) => {
-  loadParentTranslations(language)
+  loadParentTranslations(language, refreshUI)
   await i18next.changeLanguage(language).catch(logger.error)
 })

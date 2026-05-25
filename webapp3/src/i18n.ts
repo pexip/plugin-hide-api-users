@@ -21,13 +21,18 @@ const findLatestTranslationUrl = (): string | null => {
   return null
 }
 
-const fetchTranslation = async (url: string, lng: string): Promise<void> => {
+const fetchTranslation = async (
+  url: string,
+  lng: string,
+  onLoaded?: () => void
+): Promise<void> => {
   currentTranslationUrl = url
   try {
     const res = await fetch(url)
     const data: unknown = await res.json()
     i18next.addResourceBundle(lng, 'translation', data, true, true)
     logger.info(`Loaded parent translations for '${lng}'`)
+    onLoaded?.()
   } catch (error) {
     logger.error('Failed to load parent translations')
     logger.error(error)
@@ -36,16 +41,17 @@ const fetchTranslation = async (url: string, lng: string): Promise<void> => {
 
 export const loadParentTranslations = (
   lng: string,
+  onLoaded?: () => void,
   retries = INITIAL_RETRIES
 ): void => {
   const url = findLatestTranslationUrl()
   if (url !== null && url !== currentTranslationUrl) {
-    void fetchTranslation(url, lng)
+    void fetchTranslation(url, lng, onLoaded)
     return
   }
   if (retries < MAX_RETRIES) {
     setTimeout(() => {
-      loadParentTranslations(lng, retries + RETRY_INCREMENT)
+      loadParentTranslations(lng, onLoaded, retries + RETRY_INCREMENT)
     }, RETRY_DELAY)
   } else {
     logger.warn('Parent translation file not found after retries')
