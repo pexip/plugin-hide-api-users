@@ -5,60 +5,133 @@ import {
   registerPlugin
 } from '@pexip/plugin-api'
 
-let participants: InfinityParticipant[] = []
-let observerRosterList: MutationObserver | null = null
+const { document: parentDoc } = parent
+const NOT_FOUND_ID = 'webapp3-plugin-hide-api-no-participants-found'
+const MEETING_WRAPPER_SELECTOR = '[data-testid="meeting-wrapper"]'
+const TIMEOUT = 1000
+const MIN_PARTICIPANTS = 1
 
-// Hide all chat-activity messages by CSS
-const styleChatActivity = document.createElement('style')
-styleChatActivity.innerHTML =
-  '[data-testid="chat-activity-message"] { display: none}'
-
-// Hide all participant rows by default. Only rows marked as verified non-API will be shown.
-const styleApiUsers = document.createElement('style')
-styleApiUsers.innerHTML = [
+const style = document.createElement('style')
+style.innerHTML = [
+  '[data-testid="chat-activity-message"] { display: none }',
   '[data-testid="participant-panel-in-meeting"] [data-testid="participant-row"] { display: none !important; }',
   '[data-testid="participant-panel-in-meeting"] [data-testid="participant-row"][data-visible="true"] { display: flex !important; }',
-  '#webapp3-plugin-hide-api-no-participants-found + div { display: none !important; }'
+  `#${NOT_FOUND_ID} + div { display: none !important; }`
 ].join('\n')
-
-const [body] = parent.document.getElementsByTagName('body')
-body.appendChild(styleChatActivity)
-body.appendChild(styleApiUsers)
+parentDoc.body.appendChild(style)
 
 const version = 0
-const plugin = await registerPlugin({
-  id: 'hide-api-users',
-  version
-})
+const plugin = await registerPlugin({ id: 'hide-api-users', version })
 
-const timeout = 1000
-
-const notFoundMessage = 'Results not found'
-
+let participants = new Map<string, InfinityParticipant>()
 let me: InfinityParticipant | null = null
+let observer: MutationObserver | null = null
 
-plugin.events.participantsActivities.add((activities) => {
-  activities.forEach((change) => {
-    const { roomId, activity } = change
-    if (roomId === 'main') {
-      const { type, participant } = activity
-      switch (type) {
-        case ParticipantActivities.Join:
-          participants.push(participant)
-          break
-        case ParticipantActivities.Leave:
-          participants = participants.filter((p) => p.uuid !== participant.uuid)
-          break
-        case ParticipantActivities.Update:
-          participants = participants.map((p) =>
-            p.uuid === participant.uuid ? participant : p
-          )
-          break
+const isNonApi = (displayName: string | null): boolean => {
+  if (displayName === me?.displayName) return true
+  const p = [...participants.values()].find(
+    (p) => p.displayName === displayName
+  )
+  return p !== undefined && p.callType !== CallType.api
+}
+
+const getNonApiCount = (): number =>
+  Math.max(
+    MIN_PARTICIPANTS,
+    [...participants.values()].filter((p) => p.callType !== CallType.api).length
+  )
+
+const updateTextCount = (selector: string, count: number): void => {
+  const el = parentDoc.querySelector(selector)
+  if (el !== null) {
+    el.textContent = el.textContent.replace(/\d+/v, count.toString())
+  }
+}
+
+const refreshUI = (): void => {
+  // Show/hide participants in the participant panel
+  const rows = parentDoc.querySelectorAll(
+    '[data-testid="participant-panel-in-meeting"] [data-testid="participant-row"]'
+  )
+  let hasNonApiParticipants = false
+  for (const row of rows) {
+    const [span] = row.getElementsByTagName('span')
+    if (isNonApi(span.getAttribute('title'))) {
+      row.setAttribute('data-visible', 'true')
+      hasNonApiParticipants = true
+    } else {
+      row.removeAttribute('data-visible')
+    }
+  }
+
+  // Show/hide the participant panel and "not found" message
+  const panel = parentDoc.querySelector<HTMLElement>(
+    '[data-testid="participant-panel-in-meeting"]'
+  )
+  if (panel !== null) {
+    let notFound = parentDoc.getElementById(NOT_FOUND_ID)
+    if (hasNonApiParticipants) {
+      panel.style.display = 'block'
+      notFound?.remove()
+    } else {
+      if (notFound === null) {
+        notFound = parentDoc.createElement('div')
+        notFound.id = NOT_FOUND_ID
+        notFound.textContent = 'Results not found'
+        notFound.style.textAlign = 'center'
+        panel.parentElement?.appendChild(notFound)
       }
+      panel.style.display = 'none'
+    }
+  }
+
+  // Update the participant count badge and headers
+  const count = getNonApiCount()
+  const badge = parentDoc.querySelector(
+    '[data-testid="badge-counter-number"] > span'
+  )
+  if (badge !== null) {
+    badge.textContent = count.toString()
+  }
+  updateTextCount('[data-testid="panel-header-title"]', count)
+  updateTextCount(
+    '[data-testid="participant-panel-in-meeting"] > button span',
+    count
+  )
+}
+
+const observeMeetingWrapper = (): MutationObserver => {
+  const opts: MutationObserverInit = { childList: true, subtree: true }
+  const obs = new MutationObserver(() => {
+    obs.disconnect()
+    refreshUI()
+    const wrapper = parentDoc.querySelector(MEETING_WRAPPER_SELECTOR)
+    if (wrapper !== null) {
+      obs.observe(wrapper, opts)
     }
   })
-  updateApiUsersStyle()
-  changeNumberParticipants()
+  const wrapper = parentDoc.querySelector(MEETING_WRAPPER_SELECTOR)
+  if (wrapper !== null) {
+    obs.observe(wrapper, opts)
+  }
+  return obs
+}
+
+plugin.events.participantsActivities.add((activities) => {
+  for (const { roomId, activity } of activities) {
+    if (roomId !== 'main') continue
+    const { type, participant } = activity
+    switch (type) {
+      case ParticipantActivities.Join:
+      case ParticipantActivities.Update:
+        participants.set(participant.uuid, participant)
+        break
+      case ParticipantActivities.Leave:
+        participants.delete(participant.uuid)
+        break
+    }
+  }
+  refreshUI()
 })
 
 plugin.events.me.add((event) => {
@@ -69,136 +142,9 @@ plugin.events.me.add((event) => {
 })
 
 plugin.events.authenticatedWithConference.add(() => {
-  participants = []
-  observerRosterList?.disconnect()
+  participants = new Map()
+  observer?.disconnect()
   setTimeout(() => {
-    observerRosterList = subscribeMeetingWrapperChanges()
-  }, timeout)
+    observer = observeMeetingWrapper()
+  }, TIMEOUT)
 })
-
-/**
- * Observe when the container in which is the roster list change
- */
-const subscribeMeetingWrapperChanges = (): MutationObserver => {
-  const meetingWrapper = parent.document.querySelector(
-    '[data-testid="meeting-wrapper"]'
-  )
-  const observeOptions: MutationObserverInit = {
-    childList: true,
-    subtree: true
-  }
-  const callback = (): void => {
-    // Disconnect before modifying the DOM to avoid infinite loop
-    observer.disconnect()
-    updateApiUsersStyle()
-    changeNumberParticipants()
-    if (meetingWrapper !== null) {
-      observer.observe(meetingWrapper, observeOptions)
-    }
-  }
-  const observer = new MutationObserver(callback)
-  if (meetingWrapper !== null) {
-    observer.observe(meetingWrapper, observeOptions)
-  }
-  return observer
-}
-
-/**
- * Mark non-API participant rows as visible.
- * All rows are hidden by default via CSS. Only verified non-API rows get shown.
- * If a participant is not yet known (not in the array), it stays hidden.
- */
-const updateApiUsersStyle = (): void => {
-  const participantsElements = parent.document.querySelectorAll(
-    '[data-testid="participant-panel-in-meeting"] [data-testid="participant-row"]'
-  )
-
-  let emptyParticipants = true
-  for (const element of participantsElements) {
-    const [span] = element.getElementsByTagName('span')
-    const displayName = span.getAttribute('title')
-    const participant = participants.find((p) => p.displayName === displayName)
-    const isConfirmedNonApi =
-      (participant !== undefined && participant.callType !== CallType.api) ||
-      displayName === me?.displayName
-    if (isConfirmedNonApi) {
-      element.setAttribute('data-visible', 'true')
-      emptyParticipants = false
-    } else {
-      element.removeAttribute('data-visible')
-    }
-  }
-
-  // If there are no non-API participants, show a message and hide the participant panel
-  const participantPanel = parent.document.querySelector<HTMLElement>(
-    '[data-testid="participant-panel-in-meeting"]'
-  )
-  if (participantPanel !== null) {
-    if (emptyParticipants) {
-      // participantPanel.innerHTML = ''
-      const id = 'webapp3-plugin-hide-api-no-participants-found'
-      let notFoundElement = parent.document.getElementById(id)
-
-      if (notFoundElement === null) {
-        notFoundElement = parent.document.createElement('div')
-        notFoundElement.textContent = notFoundMessage
-        notFoundElement.id = id
-        notFoundElement.style.textAlign = 'center'
-        participantPanel.parentElement?.appendChild(notFoundElement)
-      }
-
-      participantPanel.style.display = 'none'
-    } else {
-      participantPanel.style.display = 'block'
-      const notFoundElement = parent.document.getElementById(
-        'webapp3-plugin-hide-api-no-participants-found'
-      )
-      if (notFoundElement !== null) {
-        notFoundElement.remove()
-      }
-    }
-  }
-}
-
-/**
- * Change the number of participants shown in the UI. API participants are not counted.
- * This updates only the numeric portion of the button badge, panel header, and accordion title.
- */
-const changeNumberParticipants = (): void => {
-  const noApiParticipants = participants.filter((participant) => {
-    const { callType } = participant
-    return callType !== CallType.api
-  })
-  const minParticipants = 1
-  const numberParticipants = Math.max(minParticipants, noApiParticipants.length)
-
-  // Change it into the badge of the button participants
-  const badgeCounter = parent.document.querySelector(
-    '[data-testid="badge-counter-number"] > span'
-  )
-  if (badgeCounter !== null) {
-    badgeCounter.textContent = numberParticipants.toString()
-  }
-
-  // Change it into the header of the participant panel
-  const headerTitle = parent.document.querySelector(
-    '[data-testid="panel-header-title"]'
-  )
-  if (headerTitle !== null) {
-    headerTitle.textContent = headerTitle.textContent.replace(
-      /\d+/v,
-      numberParticipants.toString()
-    )
-  }
-
-  // Change it into the accordion title
-  const accordionTitle = parent.document.querySelector(
-    '[data-testid="participant-panel-in-meeting"] span'
-  )
-  if (accordionTitle !== null) {
-    accordionTitle.textContent = accordionTitle.textContent.replace(
-      /\d+/v,
-      numberParticipants.toString()
-    )
-  }
-}
