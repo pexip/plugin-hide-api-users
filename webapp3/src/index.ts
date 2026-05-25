@@ -17,7 +17,8 @@ styleChatActivity.innerHTML =
 const styleApiUsers = document.createElement('style')
 styleApiUsers.innerHTML = [
   '[data-testid="participant-panel-in-meeting"] [data-testid="participant-row"] { display: none !important; }',
-  '[data-testid="participant-panel-in-meeting"] [data-testid="participant-row"][data-visible="true"] { display: flex !important; }'
+  '[data-testid="participant-panel-in-meeting"] [data-testid="participant-row"][data-visible="true"] { display: flex !important; }',
+  '#webapp3-plugin-hide-api-no-participants-found + div { display: none !important; }'
 ].join('\n')
 
 const [body] = parent.document.getElementsByTagName('body')
@@ -31,6 +32,10 @@ const plugin = await registerPlugin({
 })
 
 const timeout = 1000
+
+const notFoundMessage = 'Results not found'
+
+let me: InfinityParticipant | null = null
 
 plugin.events.participantsActivities.add((activities) => {
   activities.forEach((change) => {
@@ -54,6 +59,13 @@ plugin.events.participantsActivities.add((activities) => {
   })
   updateApiUsersStyle()
   changeNumberParticipants()
+})
+
+plugin.events.me.add((event) => {
+  const { id, participant } = event
+  if (id === 'main') {
+    me = participant
+  }
 })
 
 plugin.events.authenticatedWithConference.add(() => {
@@ -100,18 +112,52 @@ const updateApiUsersStyle = (): void => {
   const participantsElements = parent.document.querySelectorAll(
     '[data-testid="participant-panel-in-meeting"] [data-testid="participant-row"]'
   )
-  participantsElements.forEach((element) => {
+
+  let emptyParticipants = true
+  for (const element of participantsElements) {
     const [span] = element.getElementsByTagName('span')
     const displayName = span.getAttribute('title')
     const participant = participants.find((p) => p.displayName === displayName)
     const isConfirmedNonApi =
-      participant !== undefined && participant.callType !== CallType.api
+      (participant !== undefined && participant.callType !== CallType.api) ||
+      displayName === me?.displayName
     if (isConfirmedNonApi) {
       element.setAttribute('data-visible', 'true')
+      emptyParticipants = false
     } else {
       element.removeAttribute('data-visible')
     }
-  })
+  }
+
+  // If there are no non-API participants, show a message and hide the participant panel
+  const participantPanel = parent.document.querySelector<HTMLElement>(
+    '[data-testid="participant-panel-in-meeting"]'
+  )
+  if (participantPanel !== null) {
+    if (emptyParticipants) {
+      // participantPanel.innerHTML = ''
+      const id = 'webapp3-plugin-hide-api-no-participants-found'
+      let notFoundElement = parent.document.getElementById(id)
+
+      if (notFoundElement === null) {
+        notFoundElement = parent.document.createElement('div')
+        notFoundElement.textContent = notFoundMessage
+        notFoundElement.id = id
+        notFoundElement.style.textAlign = 'center'
+        participantPanel.parentElement?.appendChild(notFoundElement)
+      }
+
+      participantPanel.style.display = 'none'
+    } else {
+      participantPanel.style.display = 'block'
+      const notFoundElement = parent.document.getElementById(
+        'webapp3-plugin-hide-api-no-participants-found'
+      )
+      if (notFoundElement !== null) {
+        notFoundElement.remove()
+      }
+    }
+  }
 }
 
 /**
