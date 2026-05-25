@@ -29,19 +29,21 @@ let participants = new Map<string, InfinityParticipant>()
 let me: InfinityParticipant | null = null
 let observer: MutationObserver | null = null
 
-const isNonApi = (displayName: string | null): boolean => {
-  if (displayName === me?.displayName) return true
-  const p = [...participants.values()].find(
-    (p) => p.displayName === displayName
-  )
-  return p !== undefined && p.callType !== CallType.api
+const nonApiDisplayNames = (): Set<string | undefined> => {
+  const names = new Set<string | undefined>()
+  if (me !== null) {
+    names.add(me.displayName)
+  }
+  for (const p of participants.values()) {
+    if (p.callType !== CallType.api) {
+      names.add(p.displayName)
+    }
+  }
+  return names
 }
 
 const getNonApiCount = (): number =>
-  Math.max(
-    MIN_PARTICIPANTS,
-    [...participants.values()].filter((p) => p.callType !== CallType.api).length
-  )
+  Math.max(MIN_PARTICIPANTS, nonApiDisplayNames().size)
 
 const updateTextCount = (selector: string, count: number): void => {
   const el = parentDoc.querySelector(selector)
@@ -55,10 +57,11 @@ const refreshUI = (): void => {
   const rows = parentDoc.querySelectorAll(
     '[data-testid="participant-panel-in-meeting"] [data-testid="participant-row"]'
   )
+  const visibleNames = nonApiDisplayNames()
   let hasNonApiParticipants = false
   for (const row of rows) {
     const [span] = row.getElementsByTagName('span')
-    if (isNonApi(span.getAttribute('title'))) {
+    if (visibleNames.has(span.getAttribute('title') ?? undefined)) {
       row.setAttribute('data-visible', 'true')
       hasNonApiParticipants = true
     } else {
