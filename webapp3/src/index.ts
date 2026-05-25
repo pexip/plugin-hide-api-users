@@ -52,6 +52,27 @@ const updateTextCount = (selector: string, count: number): void => {
   }
 }
 
+const updateNotFound = (hasNonApiParticipants: boolean): void => {
+  let notFound = parentDoc.getElementById(NOT_FOUND_ID)
+  if (hasNonApiParticipants) {
+    notFound?.remove()
+  } else {
+    if (notFound === null) {
+      notFound = parentDoc.createElement('div')
+      notFound.id = NOT_FOUND_ID
+      notFound.style.textAlign = 'center'
+      const panel = parentDoc.querySelector<HTMLElement>(
+        '[data-testid="participant-panel-in-meeting"]'
+      )
+      panel?.parentElement?.appendChild(notFound)
+    }
+    notFound.textContent = i18next.t(
+      'meeting.participant-search.no-results',
+      'No results found'
+    )
+  }
+}
+
 const refreshUI = (): void => {
   // Show/hide participants in the participant panel
   const rows = parentDoc.querySelectorAll(
@@ -60,8 +81,9 @@ const refreshUI = (): void => {
   const visibleNames = nonApiDisplayNames()
   let hasNonApiParticipants = false
   for (const row of rows) {
-    const [span] = row.getElementsByTagName('span')
-    if (visibleNames.has(span.getAttribute('title') ?? undefined)) {
+    const span = row.querySelector('span[title]')
+    const title = span?.getAttribute('title') ?? undefined
+    if (title !== undefined && visibleNames.has(title)) {
       row.setAttribute('data-visible', 'true')
       hasNonApiParticipants = true
     } else {
@@ -74,23 +96,8 @@ const refreshUI = (): void => {
     '[data-testid="participant-panel-in-meeting"]'
   )
   if (panel !== null) {
-    let notFound = parentDoc.getElementById(NOT_FOUND_ID)
-    if (hasNonApiParticipants) {
-      panel.style.display = 'block'
-      notFound?.remove()
-    } else {
-      if (notFound === null) {
-        notFound = parentDoc.createElement('div')
-        notFound.id = NOT_FOUND_ID
-        notFound.style.textAlign = 'center'
-        panel.parentElement?.appendChild(notFound)
-      }
-      notFound.textContent = i18next.t(
-        'meeting.participant-search.no-results',
-        'No results found'
-      )
-      panel.style.display = 'none'
-    }
+    updateNotFound(hasNonApiParticipants)
+    panel.style.display = hasNonApiParticipants ? 'block' : 'none'
   }
 
   // Update the participant count badge and headers
