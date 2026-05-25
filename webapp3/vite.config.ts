@@ -71,6 +71,7 @@ export default defineConfig(({ mode }) => {
       open: `${infinityPath}/`,
       allowedHosts: ['localhost'],
       port: port,
+      strictPort: true,
       proxy: {
         '/api': {
           target: infinityTarget,
