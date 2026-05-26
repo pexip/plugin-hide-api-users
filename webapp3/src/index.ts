@@ -42,8 +42,15 @@ const nonApiDisplayNames = (): Set<string> => {
   return names
 }
 
-const getNonApiCount = (): number =>
-  Math.max(MIN_PARTICIPANTS, nonApiDisplayNames().size)
+const getNonApiCount = (): number => {
+  let count = 0
+  for (const p of participants.values()) {
+    if (p.callType !== CallType.api) {
+      count += MIN_PARTICIPANTS
+    }
+  }
+  return Math.max(MIN_PARTICIPANTS, count)
+}
 
 const updateTextCount = (selector: string, count: number): void => {
   const el = parentDoc.querySelector(selector)
