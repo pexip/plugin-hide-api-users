@@ -1,134 +1,177 @@
-import { CallType } from '@pexip/infinity'
-import { Participant, registerPlugin } from '@pexip/plugin-api'
+import {
+  CallType,
+  type InfinityParticipant,
+  ParticipantActivities,
+  registerPlugin
+} from '@pexip/plugin-api'
+import { logger } from './logger'
+import { i18next, loadParentTranslations } from './i18n'
 
-let participants: Participant[] = []
-let observerRosterList: MutationObserver
-let observerHeader: MutationObserver
-let observerParticipantButton: MutationObserver
+const { document: parentDoc } = parent
+const NOT_FOUND_ID = 'webapp3-plugin-hide-api-no-participants-found'
+const MEETING_WRAPPER_SELECTOR = '[data-testid="meeting-wrapper"]'
+const TIMEOUT = 1000
+const MIN_PARTICIPANTS = 1
 
-// Hide all chat-activity message by CSS
 const style = document.createElement('style')
-style.innerHTML = '[data-testid="chat-activity-message"] { display: none}'
-parent.document.getElementsByTagName('body')[0].appendChild(style)
+style.innerHTML = [
+  '[data-testid="chat-activity-message"] { display: none }',
+  '[data-testid="participant-panel-in-meeting"] [data-testid="participant-row"] { display: none !important; }',
+  '[data-testid="participant-panel-in-meeting"] [data-testid="participant-row"][data-visible="true"] { display: flex !important; }',
+  `#${NOT_FOUND_ID} + div { display: none !important; }`
+].join('\n')
+parentDoc.body.appendChild(style)
 
-const plugin = await registerPlugin({
-  id: 'hide-api-users',
-  version: 0
+const version = 0
+const plugin = await registerPlugin({ id: 'hide-api-users', version })
+
+let participants = new Map<string, InfinityParticipant>()
+let me: InfinityParticipant | null = null
+let observer: MutationObserver | null = null
+
+const nonApiDisplayNames = (): Set<string> => {
+  const names = new Set<string>()
+  if (me?.displayName !== undefined) {
+    names.add(me.displayName)
+  }
+  for (const p of participants.values()) {
+    if (p.callType !== CallType.api && p.displayName !== undefined) {
+      names.add(p.displayName)
+    }
+  }
+  return names
+}
+
+const getNonApiCount = (): number => {
+  let count = 0
+  for (const p of participants.values()) {
+    if (p.callType !== CallType.api) {
+      count += MIN_PARTICIPANTS
+    }
+  }
+  return Math.max(MIN_PARTICIPANTS, count)
+}
+
+const updateTextCount = (selector: string, count: number): void => {
+  const el = parentDoc.querySelector(selector)
+  if (el !== null) {
+    el.textContent = el.textContent.replace(/\d+/v, count.toString())
+  }
+}
+
+const updateNotFound = (hasNonApiParticipants: boolean): void => {
+  let notFound = parentDoc.getElementById(NOT_FOUND_ID)
+  if (hasNonApiParticipants) {
+    notFound?.remove()
+  } else {
+    if (notFound === null) {
+      notFound = parentDoc.createElement('div')
+      notFound.id = NOT_FOUND_ID
+      notFound.style.textAlign = 'center'
+      const panel = parentDoc.querySelector<HTMLElement>(
+        '[data-testid="participant-panel-in-meeting"]'
+      )
+      panel?.parentElement?.appendChild(notFound)
+    }
+    notFound.textContent = i18next.t(
+      'meeting.participant-search.no-results',
+      'No results found'
+    )
+  }
+}
+
+const refreshUI = (): void => {
+  // Show/hide participants in the participant panel
+  const rows = parentDoc.querySelectorAll(
+    '[data-testid="participant-panel-in-meeting"] [data-testid="participant-row"]'
+  )
+  const visibleNames = nonApiDisplayNames()
+  let hasNonApiParticipants = false
+  for (const row of rows) {
+    const span = row.querySelector('span[title]')
+    const title = span?.getAttribute('title') ?? undefined
+    if (title !== undefined && visibleNames.has(title)) {
+      row.setAttribute('data-visible', 'true')
+      hasNonApiParticipants = true
+    } else {
+      row.removeAttribute('data-visible')
+    }
+  }
+
+  // Show/hide the participant panel and "not found" message
+  const panel = parentDoc.querySelector<HTMLElement>(
+    '[data-testid="participant-panel-in-meeting"]'
+  )
+  if (panel !== null) {
+    updateNotFound(hasNonApiParticipants)
+    panel.style.display = hasNonApiParticipants ? 'block' : 'none'
+  }
+
+  // Update the participant count badge and headers
+  const count = getNonApiCount()
+  const badge = parentDoc.querySelector(
+    '[data-testid="badge-counter-number"] > span'
+  )
+  if (badge !== null) {
+    badge.textContent = count.toString()
+  }
+  updateTextCount('[data-testid="panel-header-title"]', count)
+  updateTextCount(
+    '[data-testid="participant-panel-in-meeting"] > button span',
+    count
+  )
+}
+
+const observeMeetingWrapper = (): MutationObserver => {
+  const opts: MutationObserverInit = { childList: true, subtree: true }
+  const obs = new MutationObserver(() => {
+    obs.disconnect()
+    refreshUI()
+    const wrapper = parentDoc.querySelector(MEETING_WRAPPER_SELECTOR)
+    if (wrapper !== null) {
+      obs.observe(wrapper, opts)
+    }
+  })
+  const wrapper = parentDoc.querySelector(MEETING_WRAPPER_SELECTOR)
+  if (wrapper !== null) {
+    obs.observe(wrapper, opts)
+  }
+  return obs
+}
+
+plugin.events.participantsActivities.add((activities) => {
+  for (const { roomId, activity } of activities) {
+    if (roomId !== 'main') continue
+    const { type, participant } = activity
+    switch (type) {
+      case ParticipantActivities.Join:
+      case ParticipantActivities.Update:
+        participants.set(participant.uuid, participant)
+        break
+      case ParticipantActivities.Leave:
+        participants.delete(participant.uuid)
+        break
+    }
+  }
+  refreshUI()
 })
 
-plugin.events.participants.add((users) => {
-  participants = getCleanParticipants(users)
-  removeApiUsersFromRosterList()
-  changeNumberParticipants()
+plugin.events.me.add((event) => {
+  const { id, participant } = event
+  if (id === 'main') {
+    me = participant
+  }
 })
 
 plugin.events.authenticatedWithConference.add(() => {
-  participants = []
-  observerRosterList?.disconnect()
-  observerHeader?.disconnect()
-  observerParticipantButton?.disconnect()
+  participants = new Map()
+  observer?.disconnect()
   setTimeout(() => {
-    observerRosterList = subscribeMeetingWrapperChanges()
-    observerHeader = subscribeHeaderChanges()
-    observerParticipantButton = subscribeButtonParticipantsChanges()
-  }, 1000)
+    observer = observeMeetingWrapper()
+  }, TIMEOUT)
 })
 
-/**
- * Observe when the container in which is the roster list change
- */
-const subscribeMeetingWrapperChanges = () => {
-  const observer = new MutationObserver(removeApiUsersFromRosterList)
-  const meetingWrapper = parent.document.querySelector('[data-testid="meeting-wrapper"]')
-  if (meetingWrapper != null) {
-    observer.observe(meetingWrapper, {childList: true})
-  }
-  return observer
-}
-
-const subscribeHeaderChanges = () => {
-  const observer = new MutationObserver(() => {
-    observerParticipantButton?.disconnect()
-    setTimeout(() => {
-      observerParticipantButton = subscribeButtonParticipantsChanges()
-    }, 0)
-  })
-  const header = parent.document.querySelector('[data-testid="header-core-enhancers"] > div')
-  if (header != null) {
-    observer.observe(header, {childList: true})
-  }
-  return observer
-}
-
-const subscribeButtonParticipantsChanges = () => {
-  const observer = new MutationObserver(changeNumberParticipants)
-  const buttonParticipants = parent.document.querySelector('[data-testid="button-participants"] > div')
-  if (buttonParticipants != null) {
-    observer.observe(buttonParticipants, {childList: true})
-  }
-  return observer
-}
-
-/**
- * Remove the API participants from the roster list and change the number of
- * participants in the roster list.
- */
-const removeApiUsersFromRosterList = () => {
-  console.log('Removing API participants from Roster List')
-  const participantsElements = parent.document.querySelectorAll('[data-testid="participant-panel-in-meeting"] [data-testid="participant-row"]')
-  if (participantsElements.length != 0) {
-    let numberParticipants = 0
-    participantsElements.forEach((element) => {
-      const span = element.getElementsByTagName('span')[0]
-      const displayName = span.getAttribute('title')
-      const found = participants.some((participant) => participant.callType === CallType.api && participant.displayName === displayName)
-      const parent = element.parentElement
-      if (parent != null) {
-        if (found) {
-          parent.style.display = 'none'
-        } else {
-          parent.style.display = 'block'
-          numberParticipants++
-        }
-      }
-    })
-    const counter = parent.document.querySelector('[data-testid="participant-panel-in-meeting"] > button > div > span') as HTMLDivElement
-    if (counter != null) {
-      const headerInThisMeeting = parent.document.querySelector('[data-testid="participant-panel-in-meeting"]') as HTMLDivElement
-      if (numberParticipants === 0) {
-        if (headerInThisMeeting) {
-          headerInThisMeeting.style.display = 'none'
-        }
-        counter.innerHTML = numberParticipants.toString()
-      } else {
-        if (headerInThisMeeting) {
-          headerInThisMeeting.style.display = 'block'
-        }
-        counter.innerHTML = numberParticipants.toString()
-      }
-    }
-  }
-}
-
-const changeNumberParticipants = () => {
-  console.log('Changing participant number')
-  const numberParticipants = participants.filter((participant) => participant.callType != CallType.api ).length
-  const container = parent.document.querySelector('[data-testid="button-participants"] > div > div')
-  if (container != null) {
-    container.innerHTML = container.innerHTML.replace(/\d+ (.*)/, `${numberParticipants} $1`)
-    if (numberParticipants === 1) {
-      container.innerHTML = container.innerHTML.replace(/(.*)s$/, '$1')
-    }
-  }
-}
-
-/**
- * Normalize the user to support v32 and v33
- */
-const getCleanParticipants = (participants: any): Participant[] => {
-  if (participants.id == null) {
-    return participants
-  } else {
-    return (participants.participants as Participant[])
-  }
-}
+plugin.events.languageSelect.add(async (language) => {
+  loadParentTranslations(language, refreshUI)
+  await i18next.changeLanguage(language).catch(logger.error)
+})
