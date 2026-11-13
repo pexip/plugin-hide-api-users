@@ -13,7 +13,7 @@
   "license": "ISC",
   "dependencies": {
     "@pexip/plugin-api": "22.1.9",
-    "i18next": "^26.2.0",
+    "i18next": "^26.5.6",
     "pino": "^10.3.1"
   },
   "devDependencies": {
