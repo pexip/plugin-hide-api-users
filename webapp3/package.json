@@ -23,7 +23,7 @@
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.3",
     "typescript": "^6.0.3",
-    "vite": "^8.0.14",
+    "vite": "^8.3.5",
     "vite-plugin-mkcert": "^2.0.0"
   },
   "engines": {
